@@ -5,9 +5,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from typesense.configuration import NodeConfigDict, ConfigDict
 from typesense.types.document import SearchParameters
 
+import uvicorn
+
 
 class Settings(BaseSettings):
     development: bool = False
+    listen_host: str = "0.0.0.0"
+    listen_port: int = 8005
     typesense_api_key: str
     typesense_host: str
     typesense_port: int = 8080
@@ -21,6 +25,7 @@ settings = Settings()
 
 mcp = FastMCP(
     "HBG Typesense MCP",
+    stateless_http=True,
     json_response=True,
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
@@ -63,9 +68,7 @@ async def search(query: str):
     return results
 
 
-def main():
-    mcp.run(transport="streamable-http")
-
+app = mcp.streamable_http_app()
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(app, host=settings.listen_host, port=settings.listen_port, reload=settings.development)

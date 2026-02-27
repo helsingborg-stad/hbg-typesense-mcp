@@ -10,4 +10,5 @@ dependencies = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
     "typesense>=2.0.0",
+    "uvicorn>=0.41.0",
 ]
