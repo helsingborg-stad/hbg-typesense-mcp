@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     typesense_port: int = 8080
     typesense_protocol: str = 'http'
     typesense_collection: str
+    allowed_hosts: list[str] = []
+    allowed_origins: list[str] = []
 
     model_config = SettingsConfigDict(env_file='.env')
 
@@ -29,19 +31,9 @@ mcp = FastMCP(
     json_response=True,
     transport_security=TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=[
-            "127.0.0.1:*",
-            "localhost:*",
-            "[::1]:*",
-            "host.docker.internal:*",
-        ],
-        allowed_origins=[
-            "http://127.0.0.1:*",
-            "http://localhost:*",
-            "http://[::1]:*",
-            "http://host.docker.internal:*",
-        ],
-    ) if settings.development else None,
+        allowed_hosts=settings.allowed_hosts,
+        allowed_origins=settings.allowed_origins,
+    ),
 )
 
 typesense_client = typesense.Client(ConfigDict(
