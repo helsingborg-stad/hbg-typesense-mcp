@@ -1,11 +1,8 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    MCP_HOST=0.0.0.0 \
-    MCP_PORT=8000
+COPY .env.example .env
 
 COPY pyproject.toml uv.lock /app/
 
