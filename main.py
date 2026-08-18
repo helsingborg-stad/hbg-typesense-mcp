@@ -3,13 +3,41 @@ import logging
 import typesense
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator, model_validator
+from pydantic_settings import (
+    BaseSettings,
+    EnvSettingsSource,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 from typesense.configuration import NodeConfigDict, ConfigDict
 from typesense.types.document import SearchParameters
 
 import uvicorn
 
 from src.logger import RequestLoggingMiddleware, log_tool_errors, setup_logging
+
+
+def unquote_env_value(value: str) -> str:
+    """Strip whitespace and one layer of matching surrounding quotes.
+
+    Env loaders disagree on quoting: python-dotenv (`uv run main.py`) and
+    docker compose `env_file:` strip quotes, but `docker run --env-file` passes
+    the line verbatim, so `KEY="value"` arrives with the quotes attached.
+    """
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1].strip()
+    return value
+
+
+class UnquotingEnvSource(EnvSettingsSource):
+    """Env source that unquotes raw values before pydantic parses them."""
+
+    def prepare_field_value(self, field_name, field, value, value_is_complex):
+        if isinstance(value, str):
+            value = unquote_env_value(value)
+        return super().prepare_field_value(field_name, field, value, value_is_complex)
 
 
 class Settings(BaseSettings, extra="ignore"):
@@ -29,6 +57,45 @@ class Settings(BaseSettings, extra="ignore"):
     log_to_console: bool = True
 
     model_config = SettingsConfigDict(env_file=".env")
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            UnquotingEnvSource(settings_cls),
+            dotenv_settings,
+            file_secret_settings,
+        )
+
+    @field_validator("typesense_protocol")
+    @classmethod
+    def validate_protocol(cls, value: str) -> str:
+        if value not in {"http", "https"}:
+            raise ValueError(
+                f"TYPESENSE_PROTOCOL must be 'http' or 'https', got {value!r}"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def validate_required(self) -> "Settings":
+        missing = [
+            name
+            for name, value in (
+                ("TYPESENSE_API_KEY", self.typesense_api_key),
+                ("TYPESENSE_HOST", self.typesense_host),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(f"Missing required settings: {', '.join(missing)}")
+        return self
 
 
 settings = Settings()
@@ -170,7 +237,7 @@ if __name__ == "__main__":
     logger.info(
         "Starting HBG Typesense MCP on %s:%s", settings.listen_host, settings.listen_port)
     logger.info(
-        "Typesense host: %s:%s (%s)", settings.typesense_host, settings.typesense_port, settings.typesense_protocol)
+        "Typesense node: %r", f"{settings.typesense_protocol}://{settings.typesense_host}:{settings.typesense_port}")
     logger.info("Dev mode: %s", settings.development)
     logger.info("Key: %s", settings.typesense_api_key[0:4] + "..." + settings.typesense_api_key[-4:] if settings.typesense_api_key else "(none)")
     uvicorn.run(
