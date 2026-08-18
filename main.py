@@ -172,6 +172,7 @@ if __name__ == "__main__":
     logger.info(
         "Typesense host: %s:%s (%s)", settings.typesense_host, settings.typesense_port, settings.typesense_protocol)
     logger.info("Dev mode: %s", settings.development)
+    logger.info("Key: %s", settings.typesense_api_key[0:4] + "..." + settings.typesense_api_key[-4:] if settings.typesense_api_key else "(none)")
     uvicorn.run(
         'main:app',
         host=settings.listen_host,
