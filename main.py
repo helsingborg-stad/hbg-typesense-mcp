@@ -1,3 +1,5 @@
+import logging
+
 import typesense
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
@@ -6,6 +8,8 @@ from typesense.configuration import NodeConfigDict, ConfigDict
 from typesense.types.document import SearchParameters
 
 import uvicorn
+
+from src.logger import RequestLoggingMiddleware, log_tool_errors, setup_logging
 
 
 class Settings(BaseSettings, extra="ignore"):
@@ -18,11 +22,26 @@ class Settings(BaseSettings, extra="ignore"):
     typesense_protocol: str = "http"
     allowed_hosts: list[str] = []
     allowed_origins: list[str] = []
+    log_dir: str = "logs"
+    log_level: str = "INFO"
+    log_max_bytes: int = 10 * 1024 * 1024
+    log_backup_count: int = 5
+    log_to_console: bool = True
 
     model_config = SettingsConfigDict(env_file=".env")
 
 
 settings = Settings()
+
+setup_logging(
+    log_dir=settings.log_dir,
+    level=settings.log_level,
+    max_bytes=settings.log_max_bytes,
+    backup_count=settings.log_backup_count,
+    console=settings.log_to_console,
+)
+
+logger = logging.getLogger("hbg.main")
 
 mcp = FastMCP(
     "HBG Typesense MCP",
@@ -50,6 +69,7 @@ typesense_client = typesense.Client(
 
 
 @mcp.tool()
+@log_tool_errors
 async def list_collections():
     """List available Typesense collections with compact metadata.
 
@@ -89,6 +109,7 @@ async def list_collections():
 
 
 @mcp.tool()
+@log_tool_errors
 async def get_collection_info(collection_name: str):
     """Get full schema and metadata for a single Typesense collection.
 
@@ -114,6 +135,7 @@ async def get_collection_info(collection_name: str):
 
 
 @mcp.tool()
+@log_tool_errors
 async def search(collection_name: str, query: str):
     """Search documents in a Typesense collection using free-text query.
 
@@ -142,17 +164,21 @@ async def search(collection_name: str, query: str):
     return results
 
 
-app = mcp.streamable_http_app()
+app = RequestLoggingMiddleware(mcp.streamable_http_app())
 
 if __name__ == "__main__":
-    print(
-        f"Starting HBG Typesense MCP on {settings.listen_host}:{settings.listen_port}")
-    print(
-        f"Typesense host: {settings.typesense_host}:{settings.typesense_port} ({settings.typesense_protocol})")
-    print(f"Dev mode: {settings.development}")
+    logger.info(
+        "Starting HBG Typesense MCP on %s:%s", settings.listen_host, settings.listen_port)
+    logger.info(
+        "Typesense host: %s:%s (%s)", settings.typesense_host, settings.typesense_port, settings.typesense_protocol)
+    logger.info("Dev mode: %s", settings.development)
     uvicorn.run(
         'main:app',
         host=settings.listen_host,
         port=settings.listen_port,
         reload=settings.development,
+        # Keep the root logger config from setup_logging; the middleware above
+        # is the single source of request logs.
+        log_config=None,
+        access_log=False,
     )

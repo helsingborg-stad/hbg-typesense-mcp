@@ -31,11 +31,22 @@ docker compose down
 
 ## Architecture
 
-All application logic lives in `main.py`:
+Tool and server wiring lives in `main.py`, logging in `src/logger/`:
 - **Settings** — `pydantic-settings` `BaseSettings` class loading from `.env` file. Required: `typesense_api_key`, `typesense_host`.
 - **MCP server** — `FastMCP` configured for stateless HTTP with JSON responses and DNS rebinding protection. Configurable `allowed_hosts`/`allowed_origins`.
 - **Typesense client** — Initialized from settings, searches the configured collection across `post_title` and `content` fields.
-- **ASGI app** — `mcp.streamable_http_app()` served by uvicorn directly.
+- **ASGI app** — `mcp.streamable_http_app()` wrapped in `RequestLoggingMiddleware`, served by uvicorn directly.
+
+## Logging
+
+`setup_logging()` (from `src/logger/setup.py`) configures the root logger at import time in `main.py`, so it also applies under `--reload` and to library loggers (uvicorn, mcp). Timestamps are ISO 8601 in UTC. Handlers, all writing to `LOG_DIR` (default `logs/`, gitignored):
+- **`app.log`** — `RotatingFileHandler`, everything *below* ERROR (filtered by `BelowErrorFilter`).
+- **`error.log`** — plain `FileHandler`, ERROR and above with full tracebacks.
+- **stderr** — same formatter, disable with `LOG_TO_CONSOLE=false`.
+
+`uvicorn.run()` is called with `log_config=None` and `access_log=False`; `RequestLoggingMiddleware` is the single source of request logs (`METHOD /path <status> <ms> client=<ip>`, at ERROR for 5xx and unhandled exceptions).
+
+Every `@mcp.tool()` function must also be decorated with `@log_tool_errors` (applied *below* `@mcp.tool()`). FastMCP converts tool exceptions into an error result over HTTP 200, so without it failures never reach `error.log`.
 
 ## Environment Variables
 

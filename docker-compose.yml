@@ -21,6 +21,8 @@ services:
   mcp:
     build: .
     env_file: .env
+    volumes:
+      - ./logs:/app/logs
     labels:
       - traefik.enable=true
       - traefik.http.routers.mcp.rule=Host(`${DOMAIN}`)
