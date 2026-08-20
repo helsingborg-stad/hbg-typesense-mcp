@@ -200,7 +200,7 @@ async def get_collection_info(collection_name: str):
 
 @mcp.tool()
 @log_tool_errors
-async def search(collection_name: str, query: str):
+async def search(collection_name: str, q: str, query_by: str = "post_title,content", filter_by: str = "", sort_by: str = "", page: int = 1, per_page: int = 10, include_fields: str = ""):
     """Search documents in a Typesense collection using free-text query.
 
     Use when:
@@ -213,7 +213,14 @@ async def search(collection_name: str, query: str):
 
     Args:
         collection_name (str): Exact name of the collection to search.
-        query (str): User search text.
+        q (str): User search text (query).
+        query_by (str, optional): Comma-separated list of fields to search.
+            Defaults to "post_title,content".
+        filter_by (str, optional): Optional filter expression to restrict results.
+        sort_by (str, optional): Comma-separated list of fields+order (e.g., "post_date:desc") to sort by. Field must be marked as sortable in the collection schema.
+        page (int, optional): Page number for paginated results. Defaults to 1.
+        per_page (int, optional): Number of results per page. Defaults to 10.
+        include_fields (str, optional): Comma-separated list of fields to include in results. Defaults to all fields.
 
     Returns:
         dict: Typesense search response containing hits and metadata.
@@ -223,7 +230,7 @@ async def search(collection_name: str, query: str):
         - If no matches are found, returns a valid response with empty hits.
     """
     results = typesense_client.collections[collection_name].documents.search(
-        SearchParameters(q=query, query_by="post_title,content")
+        SearchParameters(q=q, query_by=query_by, filter_by=filter_by, sort_by=sort_by, page=page, per_page=per_page, include_fields=include_fields)
     )
     return results
 
