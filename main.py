@@ -153,7 +153,7 @@ async def list_collections():
         list[dict]: One item per collection with:
             - name (str): Collection name.
             - num_documents (int): Number of indexed documents.
-            - fields (list[dict]): Field summaries with name and type.
+            - field_names (list[str]): Names of fields in the collection.
 
     Notes:
         - This tool returns a trimmed subset of collection metadata.
@@ -164,10 +164,7 @@ async def list_collections():
         {
             "name": col["name"],
             "num_documents": col["num_documents"],
-            "fields": [
-                {"name": field["name"], "type": field["type"]}
-                for field in col["fields"]
-            ],
+            "field_names": [ f['name'] for f in col["fields"] if 'name' in f ],
         }
         for col in collections
     ]
