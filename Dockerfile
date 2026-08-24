@@ -7,8 +7,7 @@ COPY pyproject.toml uv.lock /app/
 RUN pip install --no-cache-dir uv \
     && uv sync --frozen
 
-COPY main.py README.md /app/
-COPY src /app/src
+COPY main.py /app/
 
 EXPOSE 8000
 
