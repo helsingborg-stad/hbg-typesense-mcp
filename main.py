@@ -1,8 +1,8 @@
 import logging
 
-import typesense
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+import typesense
 from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
@@ -10,7 +10,7 @@ from pydantic_settings import (
 from typesense.configuration import NodeConfigDict, ConfigDict
 from typesense.types.document import SearchParameters
 
-import uvicorn
+mcp = MCPServer("HBG Typesense MCP")
 
 
 class Settings(BaseSettings, extra="ignore"):
@@ -33,17 +33,6 @@ class Settings(BaseSettings, extra="ignore"):
 
 
 settings = Settings()
-
-mcp = FastMCP(
-    "HBG Typesense MCP",
-    stateless_http=True,
-    json_response=True,
-    transport_security=TransportSecuritySettings(
-        enable_dns_rebinding_protection=True,
-        allowed_hosts=settings.allowed_hosts.split(","),
-        allowed_origins=settings.allowed_origins.split(","),
-    ),
-)
 
 typesense_client = typesense.Client(
     ConfigDict(
@@ -156,20 +145,21 @@ async def search(collection_name: str, q: str, query_by: str = "post_title,conte
     )
     return results
 
-
-app = mcp.streamable_http_app()
-
 if __name__ == "__main__":
     logger = logging.getLogger("hbg")
     logger.info(
         "Starting Typesense MCP on %s:%s with allowed hosts %s and allowed origins %s", settings.listen_host, settings.listen_port, settings.allowed_hosts, settings.allowed_origins)
-    uvicorn.run(
-        'main:app',
-        host=settings.listen_host,
-        port=settings.listen_port,
-        reload=settings.development,
-        # Keep the root logger config from setup_logging; the middleware above
-        # is the single source of request logs.
-        log_config=None,
-        access_log=False,
-    )
+    try:
+        mcp.run(
+            "streamable-http",
+            stateless_http=True,
+            host=settings.listen_host,
+            port=settings.listen_port,
+            transport_security=TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=settings.allowed_hosts.split(","),
+                allowed_origins=settings.allowed_origins.split(","),
+            )
+        )
+    except KeyboardInterrupt:
+        logger.info("Stopped Typesense MCP")
