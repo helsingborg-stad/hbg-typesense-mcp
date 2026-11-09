@@ -110,7 +110,17 @@ async def get_collection_info(collection_name: str):
 
 
 @mcp.tool()
-async def search(collection_name: str, q: str, query_by: str = "post_title,content", filter_by: str = "", sort_by: str = "", page: int = 1, per_page: int = 10, include_fields: str = ""):
+async def search(
+    collection_name: str,
+    q: str | None = None,
+    query_by: str = "post_title,content",
+    filter_by: str = "",
+    sort_by: str = "",
+    page: int = 1,
+    per_page: int = 10,
+    include_fields: str = "",
+    query: str | None = None,
+):
     """Search documents in a Typesense collection using free-text query.
 
     Use when:
@@ -123,7 +133,7 @@ async def search(collection_name: str, q: str, query_by: str = "post_title,conte
 
     Args:
         collection_name (str): Exact name of the collection to search.
-        q (str): User search text (query).
+        q (str | None, optional): User search text (query). Alias: query.
         query_by (str, optional): Comma-separated list of fields to search.
             Defaults to "post_title,content".
         filter_by (str, optional): Optional filter expression to restrict results.
@@ -131,6 +141,7 @@ async def search(collection_name: str, q: str, query_by: str = "post_title,conte
         page (int, optional): Page number for paginated results. Defaults to 1.
         per_page (int, optional): Number of results per page. Defaults to 10.
         include_fields (str, optional): Comma-separated list of fields to include in results. Defaults to all fields.
+        query (str | None, optional): Alias for q.
 
     Returns:
         dict: Typesense search response containing hits and metadata.
@@ -139,8 +150,16 @@ async def search(collection_name: str, q: str, query_by: str = "post_title,conte
         - Searches the fields: post_title, content.
         - If no matches are found, returns a valid response with empty hits.
     """
+    if q is not None and query is not None and q != query:
+        raise ValueError(
+            "Use either 'q' or 'query', not both with different values.")
+
+    search_term = q if q is not None else query
+    if search_term is None:
+        raise ValueError("A search term is required. Provide 'q' or 'query'.")
+
     results = typesense_client.collections[collection_name].documents.search(
-        SearchParameters(q=q, query_by=query_by, filter_by=filter_by, sort_by=sort_by,
+        SearchParameters(q=search_term, query_by=query_by, filter_by=filter_by, sort_by=sort_by,
                          page=page, per_page=per_page, include_fields=include_fields)
     )
     return results
