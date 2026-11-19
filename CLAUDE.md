@@ -20,7 +20,7 @@ DEVELOPMENT=true uv run main.py
 
 # Docker
 docker build -t hbg-typesense-mcp .
-docker run -p 8000:8000 -e TYPESENSE_API_KEY=xxx -e TYPESENSE_HOST=xxx hbg-typesense-mcp
+docker run -p 8000:8000 -e TYPESENSE_API_KEY=xxx -e TYPESENSE_HOST=xxx -e MCP_AUTH_TOKEN=xxx hbg-typesense-mcp
 
 # Docker Compose (Traefik + Let's Encrypt)
 # Set DOMAIN and ACME_EMAIL in .env first
@@ -32,7 +32,8 @@ docker compose down
 ## Architecture
 
 Tool and server wiring lives in `main.py`, logging in `src/logger/`:
-- **Settings** — `pydantic-settings` `BaseSettings` class loading from `.env` file. Required: `typesense_api_key`, `typesense_host`.
+- **Settings** — `pydantic-settings` `BaseSettings` class loading from `.env` file. Required: `typesense_api_key`, `typesense_host`, `mcp_auth_token`.
+- **Auth** — `BearerTokenMiddleware` wraps the whole ASGI app; every HTTP request must send `Authorization: Bearer <MCP_AUTH_TOKEN>` or gets a 401. The server refuses to start if the token is empty.
 - **MCP server** — `FastMCP` configured for stateless HTTP with JSON responses and DNS rebinding protection. Configurable `allowed_hosts`/`allowed_origins`.
 - **Typesense client** — Initialized from settings, searches the configured collection across `post_title` and `content` fields.
 - **ASGI app** — `mcp.streamable_http_app()` wrapped in `RequestLoggingMiddleware`, served by uvicorn directly.

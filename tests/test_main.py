@@ -75,3 +75,46 @@ def test_search_rejects_invalid_queries_before_calling_typesense(
 
     assert str(error.value) == expected_message
     assert fake_documents.last_params is None
+
+
+async def _ok_app(scope, receive, send):
+    """Minimal downstream ASGI app that always answers 200."""
+    await send({"type": "http.response.start", "status": 200, "headers": []})
+    await send({"type": "http.response.body", "body": b"ok"})
+
+
+def _call(app, headers):
+    """Run one HTTP request through an ASGI app and return the response status."""
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b""}
+
+    async def send(message):
+        sent.append(message)
+
+    scope = {"type": "http", "headers": headers}
+    asyncio.run(app(scope, receive, send))
+    return sent[0]["status"]
+
+
+@pytest.mark.parametrize(
+    "headers, expected_status",
+    [
+        pytest.param([(b"authorization", b"Bearer secret")], 200, id="valid-token"),
+        pytest.param([(b"authorization", b"Bearer wrong")], 401, id="wrong-token"),
+        pytest.param([(b"authorization", b"secret")], 401, id="missing-scheme"),
+        pytest.param([], 401, id="no-header"),
+    ],
+)
+def test_bearer_token_middleware(headers, expected_status):
+    """Only requests carrying the configured bearer token reach the app."""
+    app = main.BearerTokenMiddleware(_ok_app, "secret")
+
+    assert _call(app, headers) == expected_status
+
+
+def test_bearer_token_middleware_requires_token():
+    """Refuse to start without a configured token."""
+    with pytest.raises(ValueError):
+        main.BearerTokenMiddleware(_ok_app, "")

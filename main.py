@@ -1,4 +1,7 @@
+import hmac
 import logging
+
+import uvicorn
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
@@ -28,6 +31,7 @@ class Settings(BaseSettings, extra="ignore"):
     log_max_bytes: int = 10 * 1024 * 1024
     log_backup_count: int = 5
     log_to_console: bool = True
+    mcp_auth_token: str = ""
 
     model_config = SettingsConfigDict(env_file=".env")
 
@@ -46,6 +50,39 @@ typesense_client = typesense.Client(
         ],
     )
 )
+
+
+class BearerTokenMiddleware:
+    """Reject HTTP requests that lack a valid `Authorization: Bearer <token>` header."""
+
+    def __init__(self, app, token: str):
+        if not token:
+            raise ValueError("MCP_AUTH_TOKEN must be set")
+        self.app = app
+        self.expected = f"Bearer {token}".encode()
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        provided = dict(scope["headers"]).get(b"authorization", b"")
+        if not hmac.compare_digest(provided, self.expected):
+            await send({
+                "type": "http.response.start",
+                "status": 401,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"www-authenticate", b'Bearer realm="mcp"'),
+                ],
+            })
+            await send({
+                "type": "http.response.body",
+                "body": b'{"error":"unauthorized"}',
+            })
+            return
+
+        await self.app(scope, receive, send)
 
 
 @mcp.tool()
@@ -168,17 +205,24 @@ if __name__ == "__main__":
     logger = logging.getLogger("hbg")
     logger.info(
         "Starting Typesense MCP on %s:%s with allowed hosts %s and allowed origins %s", settings.listen_host, settings.listen_port, settings.allowed_hosts, settings.allowed_origins)
-    try:
-        mcp.run(
-            "streamable-http",
+    app = BearerTokenMiddleware(
+        mcp.streamable_http_app(
             stateless_http=True,
             host=settings.listen_host,
-            port=settings.listen_port,
             transport_security=TransportSecuritySettings(
                 enable_dns_rebinding_protection=True,
                 allowed_hosts=settings.allowed_hosts.split(","),
                 allowed_origins=settings.allowed_origins.split(","),
-            )
+            ),
+        ),
+        settings.mcp_auth_token,
+    )
+    try:
+        uvicorn.run(
+            app,
+            host=settings.listen_host,
+            port=settings.listen_port,
+            log_level=settings.log_level.lower(),
         )
     except KeyboardInterrupt:
         logger.info("Stopped Typesense MCP")
